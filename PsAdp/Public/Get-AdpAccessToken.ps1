@@ -27,6 +27,10 @@ function Get-AdpAccessToken
         [string]$CertificatePath
     )
 
+    Write-Debug "ClientId: $ClientId"
+    Write-Debug "ClientSecret: $ClientSecret"
+    Write-Debug "CertificatePath: $CertificatePath"
+
     $Uri='https://accounts.adp.com/auth/oauth/v2/token'
     $Body = @{     
         client_id = $ClientId
@@ -34,9 +38,50 @@ function Get-AdpAccessToken
         grant_type = 'client_credentials'
     }
 
-    $Certificate = Get-PfxCertificate -FilePath $CertificatePath
+    try {
+        $Certificate = Get-PfxCertificate -FilePath $CertificatePath
 
-    $Response = Invoke-WebRequest -Uri $Uri -Method Post -Body $Body -Certificate $Certificate -ContentType 'application/x-www-form-urlencoded'
-    $Response.Content | ConvertFrom-Json
+        $Response = Invoke-WebRequest -Uri $Uri -Method Post -Body $Body -Certificate $Certificate -ContentType 'application/x-www-form-urlencoded'
+        if ( $null -ne $Response ) {$Response.Content | ConvertFrom-Json}            
+    }
+    catch [System.IO.FileNotFoundException] {
+
+        $FileNotFoundException = [System.IO.FileNotFoundException]::new('The certificate file was not found.',$CertificatePath)
+        $ErrorId = "$($MyInvocation.MyCommand.Module.Name).$($MyInvocation.MyCommand.Name) - $($_.Exception.Message)"
+        $ErrorCategory = [System.Management.Automation.ErrorCategory]::ObjectNotFound
+        $ErrorRecord = [Management.Automation.ErrorRecord]::new($FileNotFoundException, $ErrorId, $ErrorCategory, $CertificatePath)
+
+        Write-Error -ErrorRecord $ErrorRecord
+    }
+    catch [Microsoft.PowerShell.Commands.HttpResponseException] {
+
+        $ErrorDetails = $_.ErrorDetails.Message | ConvertFrom-Json
+
+        if ( $_.Exception.Response.StatusCode -eq [System.Net.HttpStatusCode]::Unauthorized ) {
+
+            $InvalidCredentialException = [System.Security.Authentication.InvalidCredentialException]::new($ErrorDetails.error_description)
+            $ErrorCategory = [System.Management.Automation.ErrorCategory]::AuthenticationError
+            $ErrorId = "$($MyInvocation.MyCommand.Module.Name).$($MyInvocation.MyCommand.Name) [$( $_.Exception.Response.StatusCode )]"
+            $ErrorRecord = [Management.Automation.ErrorRecord]::new($InvalidCredentialException, $ErrorId, $ErrorCategory, $null)
+
+        }
+        else {
+
+            $ErrorCategory = [System.Management.Automation.ErrorCategory]::NotSpecified
+            $ErrorId = "$($MyInvocation.MyCommand.Module.Name).$($MyInvocation.MyCommand.Name) - $( $_.Exception.Message )"
+            $ErrorRecord = [Management.Automation.ErrorRecord]::new($_.Exception, $ErrorId, $ErrorCategory, $null)
+        }
+
+        Write-Error -ErrorRecord $ErrorRecord
+
+    }
+    catch {
+
+        $ErrorId = "$($MyInvocation.MyCommand.Module.Name).$($MyInvocation.MyCommand.Name) - $($_.Exception.Message)"
+        $ErrorCategory = [System.Management.Automation.ErrorCategory]::NotSpecified
+        $ErrorRecord = [Management.Automation.ErrorRecord]::new($_.Exception, $ErrorId, $ErrorCategory, $null)
+        
+        Write-Error -ErrorRecord $ErrorRecord
+    }
     
 }
