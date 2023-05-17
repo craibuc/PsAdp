@@ -42,7 +42,15 @@ function Get-AdpAccessToken
         $Certificate = Get-PfxCertificate -FilePath $CertificatePath
 
         $Response = Invoke-WebRequest -Uri $Uri -Method Post -Body $Body -Certificate $Certificate -ContentType 'application/x-www-form-urlencoded'
-        if ( $null -ne $Response ) {$Response.Content | ConvertFrom-Json}            
+
+        if ( $null -ne $Response ) {
+            $Content = $Response.Content | ConvertFrom-Json
+
+            $ExpiresAt = (Get-Date).AddSeconds( $Content.expires_in )
+            $Content |  Add-Member -Name 'expires_at' -Type NoteProperty -Value $ExpiresAt
+
+            $Content
+        }
     }
     catch [System.IO.FileNotFoundException] {
 
