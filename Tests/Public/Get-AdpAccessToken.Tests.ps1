@@ -19,7 +19,7 @@ Describe 'Get-AdpAccessToken' {
         $Parameters = @(
             @{ParameterName='ClientId'; Type='[string]'; Mandatory=$true}
             @{ParameterName='ClientSecret'; Type='[string]'; Mandatory=$true}
-            @{ParameterName='CertificatePath'; Type='[string]'; Mandatory=$true}
+            @{ParameterName='Certificate'; Type='[object]'; Mandatory=$true}
         )
 
         Context 'Data type' {
@@ -52,20 +52,15 @@ Describe 'Get-AdpAccessToken' {
                 }
             }
 
-            $ExpectedCertifcate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new()
-
-            Mock Get-PfxCertificate {
-                $ExpectedCertifcate
-            }
+            $Certifcate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new()
 
             $Expected = @{
                 ClientId = (New-Guid).Guid
                 ClientSecret = (New-Guid).Guid
-                CertificatePath = '/path/to/certificate.pfx'
             }
          
             # act
-            Get-AdpAccessToken @Expected
+            Get-AdpAccessToken @Expected -Certificate $Certifcate
         }
 
         It 'uses the correct Uri' {
@@ -94,15 +89,9 @@ Describe 'Get-AdpAccessToken' {
             }
         }
 
-        It 'loads a Certificate' {
-            Assert-MockCalled -CommandName Get-PfxCertificate -ParameterFilter {
-                $FilePath -eq $Expected.CertificatePath
-            }
-        }
-
         It 'uses a Certificate' {
             Assert-MockCalled -CommandName Invoke-WebRequest -ParameterFilter {
-                $Certificate -eq $ExpectedCertifcate
+                $Certificate -eq $Certifcate
             }
         }
 
@@ -111,15 +100,12 @@ Describe 'Get-AdpAccessToken' {
     Context 'Response' {
         BeforeEach {
 
-            Mock Get-PfxCertificate {
-                [System.Security.Cryptography.X509Certificates.X509Certificate2]::new()
-            }
-
             $Expected = @{
                 ClientId = (New-Guid).Guid
                 ClientSecret = (New-Guid).Guid
-                CertificatePath = '/path/to/certificate.pfx'
             }
+
+            $Certifcate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new()
         }
         
         Context 'When valid credentials are supplied' {
@@ -132,7 +118,7 @@ Describe 'Get-AdpAccessToken' {
                         }
                     }
 
-                    $Token = Get-AdpAccessToken @Expected
+                    $Token = Get-AdpAccessToken @Expected -Certificate $Certifcate
                 }
                 It 'returns an AccessToken' {
                     $Token.access_token | Should -Be ([pscustomobject]$ExpectedAccessToken).access_token
@@ -141,9 +127,6 @@ Describe 'Get-AdpAccessToken' {
 
         Context 'When invalid credentials is supplied' {
             BeforeEach {
-                Mock Get-PfxCertificate {
-                    [System.Security.Cryptography.X509Certificates.X509Certificate2]::new()
-                }
     
                 Mock Invoke-WebRequest {
                     $UnauthorizedResponse = New-Object System.Net.Http.HttpResponseMessage 401
@@ -166,15 +149,12 @@ Describe 'Get-AdpAccessToken' {
             }
 
             It 'throws an invalid-credentials excaption' {
-                { Get-AdpAccessToken @Expected -ErrorAction Stop -Debug } | Should -Throw 'The given client credentials were not valid'
+                { Get-AdpAccessToken @Expected  -Certificate $Certifcate -ErrorAction Stop } | Should -Throw 'The given client credentials were not valid'
             }
         }
 
         Context 'When an invalid certificate is supplied' {
             BeforeEach {
-                Mock Get-PfxCertificate {
-                    [System.Security.Cryptography.X509Certificates.X509Certificate2]::new()
-                }
     
                 Mock Invoke-WebRequest {
                     $UnauthorizedResponse = New-Object System.Net.Http.HttpResponseMessage 401
@@ -197,7 +177,7 @@ Describe 'Get-AdpAccessToken' {
             }
 
             It 'throws an invalid-certificate excaption' {
-                { Get-AdpAccessToken @Expected -ErrorAction Stop } | Should -Throw 'proper client ssl certificate was not presented' 
+                { Get-AdpAccessToken @Expected -Certificate $Certifcate -ErrorAction Stop } | Should -Throw 'proper client ssl certificate was not presented' 
             }
         }
 

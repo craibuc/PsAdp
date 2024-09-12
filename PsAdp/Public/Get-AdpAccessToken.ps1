@@ -6,11 +6,12 @@ Retrieve an access token from ADP's API.
 
 .PARAMETER ClientSecret
 
-.PARAMETER CertificatePath
-Path to the certificate (pfx)
+.PARAMETER Certificate
+The certificate (pfx) file
 
 .EXAMPLE
-Get-AdpAccessToken -ClientId $Env:ADT_API_CLIENT_ID -ClientSecret $env:ADT_API_CLIENT_SECRET -CertificatePath '/path/to/certificate.pfx'
+$Certificate = Get-PfxCertificate -FilePath $CertificatePath
+Get-AdpAccessToken -ClientId $Env:ADT_API_CLIENT_ID -ClientSecret $env:ADT_API_CLIENT_SECRET -Certificate $Certificate
 
 #>
 function Get-AdpAccessToken
@@ -24,12 +25,11 @@ function Get-AdpAccessToken
         [string]$ClientSecret,
 
         [Parameter(Mandatory)]
-        [string]$CertificatePath
+        [object]$Certificate
     )
 
     Write-Debug "ClientId: $ClientId"
     Write-Debug "ClientSecret: $ClientSecret"
-    Write-Debug "CertificatePath: $CertificatePath"
 
     $Uri='https://accounts.adp.com/auth/oauth/v2/token'
     $Body = @{     
@@ -39,7 +39,6 @@ function Get-AdpAccessToken
     }
 
     try {
-        $Certificate = Get-PfxCertificate -FilePath $CertificatePath
 
         $Response = Invoke-WebRequest -Uri $Uri -Method Post -Body $Body -Certificate $Certificate -ContentType 'application/x-www-form-urlencoded'
 
@@ -51,15 +50,6 @@ function Get-AdpAccessToken
 
             $Content
         }
-    }
-    catch [System.IO.FileNotFoundException] {
-
-        $FileNotFoundException = [System.IO.FileNotFoundException]::new('The certificate file was not found.',$CertificatePath)
-        $ErrorId = "$($MyInvocation.MyCommand.Module.Name).$($MyInvocation.MyCommand.Name) - $($_.Exception.Message)"
-        $ErrorCategory = [System.Management.Automation.ErrorCategory]::ObjectNotFound
-        $ErrorRecord = [Management.Automation.ErrorRecord]::new($FileNotFoundException, $ErrorId, $ErrorCategory, $CertificatePath)
-
-        Write-Error -ErrorRecord $ErrorRecord
     }
     catch [Microsoft.PowerShell.Commands.HttpResponseException] {
 
