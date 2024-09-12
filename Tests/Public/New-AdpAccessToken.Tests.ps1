@@ -8,12 +8,12 @@ BeforeAll {
 
 }
 
-Describe 'Get-AdpAccessToken' {
+Describe 'New-AdpAccessToken' {
 
     Context "Parameter validation" {
 
         BeforeAll {
-            $Command = Get-Command 'Get-AdpAccessToken'
+            $Command = Get-Command 'New-AdpAccessToken'
         } 
 
         $Parameters = @(
@@ -60,7 +60,7 @@ Describe 'Get-AdpAccessToken' {
             }
          
             # act
-            Get-AdpAccessToken @Expected -Certificate $Certifcate
+            New-AdpAccessToken @Expected -Certificate $Certifcate
         }
 
         It 'uses the correct Uri' {
@@ -118,7 +118,7 @@ Describe 'Get-AdpAccessToken' {
                         }
                     }
 
-                    $Token = Get-AdpAccessToken @Expected -Certificate $Certifcate
+                    $Token = New-AdpAccessToken @Expected -Certificate $Certifcate
                 }
                 It 'returns an AccessToken' {
                     $Token.access_token | Should -Be ([pscustomobject]$ExpectedAccessToken).access_token
@@ -134,7 +134,7 @@ Describe 'Get-AdpAccessToken' {
         
                     $Exception = [Microsoft.PowerShell.Commands.HttpResponseException]::new($Phrase,$UnauthorizedResponse)
 
-                    $ErrorId = "PsAdp.Get-AdpAccessToken - [$( $UnauthorizedResponse.StatusCode )]"
+                    $ErrorId = "PsAdp.New-AdpAccessToken - [$( $UnauthorizedResponse.StatusCode )]"
                     $ErrorRecord = [Management.Automation.ErrorRecord]::new($Exception, $ErrorId, [System.Management.Automation.ErrorCategory]::AuthenticationError, $null)
 
                     $Message = '{
@@ -149,7 +149,7 @@ Describe 'Get-AdpAccessToken' {
             }
 
             It 'throws an invalid-credentials excaption' {
-                { Get-AdpAccessToken @Expected  -Certificate $Certifcate -ErrorAction Stop } | Should -Throw 'The given client credentials were not valid'
+                { New-AdpAccessToken @Expected  -Certificate $Certifcate -ErrorAction Stop } | Should -Throw 'The given client credentials were not valid'
             }
         }
 
@@ -162,7 +162,7 @@ Describe 'Get-AdpAccessToken' {
         
                     $Exception = [Microsoft.PowerShell.Commands.HttpResponseException]::new($Phrase,$UnauthorizedResponse)
 
-                    $ErrorId = "PsAdp.Get-AdpAccessToken - [$( $UnauthorizedResponse.StatusCode )]"
+                    $ErrorId = "PsAdp.New-AdpAccessToken - [$( $UnauthorizedResponse.StatusCode )]"
                     $ErrorRecord = [Management.Automation.ErrorRecord]::new($Exception, $ErrorId, [System.Management.Automation.ErrorCategory]::AuthenticationError, $null)
 
                     $Message = '{
@@ -177,7 +177,7 @@ Describe 'Get-AdpAccessToken' {
             }
 
             It 'throws an invalid-certificate excaption' {
-                { Get-AdpAccessToken @Expected -Certificate $Certifcate -ErrorAction Stop } | Should -Throw 'proper client ssl certificate was not presented' 
+                { New-AdpAccessToken @Expected -Certificate $Certifcate -ErrorAction Stop } | Should -Throw 'proper client ssl certificate was not presented' 
             }
         }
 

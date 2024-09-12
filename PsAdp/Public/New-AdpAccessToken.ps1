@@ -11,10 +11,10 @@ The certificate (pfx) file
 
 .EXAMPLE
 $Certificate = Get-PfxCertificate -FilePath $CertificatePath
-Get-AdpAccessToken -ClientId $Env:ADT_API_CLIENT_ID -ClientSecret $env:ADT_API_CLIENT_SECRET -Certificate $Certificate
+New-AdpAccessToken -ClientId $Env:ADT_API_CLIENT_ID -ClientSecret $env:ADT_API_CLIENT_SECRET -Certificate $Certificate
 
 #>
-function Get-AdpAccessToken
+function New-AdpAccessToken
 {
     [CmdletBinding()]
     param (
