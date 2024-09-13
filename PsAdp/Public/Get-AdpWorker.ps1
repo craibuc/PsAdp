@@ -60,6 +60,9 @@ function Get-AdpWorker
         [Parameter(ParameterSetName='One',Mandatory)]
         [string]$AssociateId,
 
+        [Parameter(ParameterSetName='SSN',Mandatory)]
+        [string]$SSN,
+
         [Parameter(ParameterSetName='One')]
         [Parameter(ParameterSetName='All')]
         [string[]]$Select,
@@ -77,56 +80,108 @@ function Get-AdpWorker
     Write-Debug "Filter: $Filter"
     Write-Debug "Masked: $Masked"
 
-    $BaseUri = $AssociateId ? "https://api.adp.com/hr/v2/workers/$AssociateId" : 'https://api.adp.com/hr/v2/workers'
-    Write-Debug "BaseUri: $BaseUri"
-
     $Headers = @{
         Accept = "application/json;masked=$Masked".ToLower()
         Authorization = "Bearer $AccessToken"
     }
     Write-Debug ($Headers | ConvertTo-Json)
 
-    $Page = 0
-    $PageSize = 100
-
-    #
-    # collect querystring variables
-    #
-
-    $Query = @{}
-
-    # applies to One and All
-    if ( $null -ne $Select) { $Query.'$select' = ($Select -join ',') }
-    
-    # applies to All
-    if ($PSCmdlet.ParameterSetName -eq 'All') { $Query.top = $PageSize }
-    if ($PSCmdlet.ParameterSetName -eq 'All' -and $null -ne $Filter) { $Query.'$filter' = ($Filter -join ',') }
-
     try {
 
-        do {
+        switch ($PSCmdlet.ParameterSetName) {
+            'One' { 
 
-            if ($PSCmdlet.ParameterSetName -eq 'All') { $Query.skip = ($Page * $PageSize) }
+                $BaseUri = "https://api.adp.com/hr/v2/workers/$AssociateId"
 
-            $QS=@()
-            $QS += foreach($Q in $Query.GetEnumerator()) {
-                "{0}={1}" -f $Q.Name, $Q.Value
+                $Query = @{}
+                if ( $null -ne $Select) { $Query.'$select' = ($Select -join ',') }
+
+                $QS=@()
+                $QS += foreach($Q in $Query.GetEnumerator()) {
+                    "{0}={1}" -f $Q.Name, $Q.Value
+                }
+    
+                $Uri = $QS.Length -gt 0 ? ( "{0}?{1}" -f $BaseUri, ($QS -join '&') ) : $BaseUri
+                Write-Debug "Uri: $Uri"
+
+                $Response = Invoke-WebRequest -Uri $Uri -Method Get -Certificate $Certificate -Headers $Headers
+                Write-Debug "StatusCode: $( $Response.StatusCode )"
+    
+                if ( $null -ne $Response -and $Response.StatusCode -eq 200) {
+                    $Content = $Response.Content | ConvertFrom-Json
+                    Write-Output $Content.workers
+                }
+    
             }
+            'SSN' { 
 
-            $Uri = $QS.Length -gt 0 ? ( "{0}?{1}" -f $BaseUri, ($QS -join '&') ) : $BaseUri
-            Write-Debug "Uri: $Uri"
+                $Body = @{
+                    "events"= @(
+                        @{
+                            "serviceCategoryCode"= @{
+                                "codeValue"= "hr"
+                            }
+                            "eventNameCode"= @{
+                                "codeValue"= "worker.read"
+                            }
+                            "data"= @{
+                                "transform"= @{
+                                    "queryParameter"= "`$filter=person/governmentIDs[0]/idValue eq '$SSN' and person/governmentIDs[0]/nameCode eq 'SSN'"
+                                }
+                            }
+                        }
+                    )
+                }
+                Write-Debug ($Body | ConvertTo-Json -Depth 5)
 
-            $Response = Invoke-WebRequest -Uri $Uri -Method Get -Certificate $Certificate -Headers $Headers
-            Write-Debug "StatusCode: $( $Response.StatusCode )"
-
-            if ( $null -ne $Response -and $Response.StatusCode -eq 200) {
-                $Content = $Response.Content | ConvertFrom-Json
-                Write-Output $Content.workers
+                $Response = Invoke-WebRequest -Uri "https://api.adp.com/events/hr/v1/worker.read" -Method Post -Certificate $Certificate -Headers $Headers -ContentType 'application/json' -Body ($Body | ConvertTo-Json -Depth 5)
+                Write-Debug "StatusCode: $( $Response.StatusCode )"
+    
+                if ( $null -ne $Response -and $Response.StatusCode -eq 200) {
+                    $Content = $Response.Content | ConvertFrom-Json
+                    Write-Output $Content.events[0].data.output.workers
+                }
+    
             }
+            # All
+            Default {
 
-            $Page += 1
+                $BaseUri = 'https://api.adp.com/hr/v2/workers'
 
-        } while ( $Response.StatusCode -eq 200 -and -not $AssociateId)
+                $Page = 0
+                $PageSize = 100
+
+                $Query = @{}
+                if ($null -ne $Select) { $Query.'$select' = ($Select -join ',') }
+                if ($null -ne $Filter) { $Query.'$filter' = ($Filter -join ',') }
+                $Query.'$top' = $PageSize
+
+                do {
+
+                    $Query.'$skip' = ($Page * $PageSize)
+        
+                    $QS=@()
+                    $QS += foreach($Q in $Query.GetEnumerator()) {
+                        "{0}={1}" -f $Q.Name, $Q.Value
+                    }
+        
+                    $Uri = $QS.Length -gt 0 ? ( "{0}?{1}" -f $BaseUri, ($QS -join '&') ) : $BaseUri
+                    Write-Debug "Uri: $Uri"
+        
+                    $Response = Invoke-WebRequest -Uri $Uri -Method Get -Certificate $Certificate -Headers $Headers
+                    Write-Debug "StatusCode: $( $Response.StatusCode )"
+        
+                    if ( $null -ne $Response -and $Response.StatusCode -eq 200) {
+                        $Content = $Response.Content | ConvertFrom-Json
+                        Write-Output $Content.workers
+                    }
+
+                    $Page += 1
+
+                } while ( $Response.StatusCode -eq 200)
+        
+            }
+        }
 
     }
     catch [Microsoft.PowerShell.Commands.HttpResponseException] {
