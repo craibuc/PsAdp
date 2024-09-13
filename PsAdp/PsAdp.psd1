@@ -12,7 +12,7 @@
 RootModule = 'PsAdp.psm1'
 
 # Version number of this module.
-ModuleVersion = '0.1.0'
+ModuleVersion = '0.2.0'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -30,7 +30,7 @@ CompanyName = 'Cogniza, Inc.'
 Copyright = '(c) Cogniza, Inc. All rights reserved.'
 
 # Description of the functionality provided by this module
-Description = 'A PowerShell wrapper of the ADP API.'
+Description = "A PowerShell wrapper of the ADP's Workforce Now API."
 
 # Minimum version of the PowerShell engine required by this module
 # PowerShellVersion = ''
@@ -69,7 +69,13 @@ Description = 'A PowerShell wrapper of the ADP API.'
 # NestedModules = @()
 
 # Functions to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no functions to export.
-FunctionsToExport = @('Get-AdpAccessToken','Get-AdpWorker')
+FunctionsToExport = @(
+    'New-AdpAccessToken',
+    'Get-AdpWorker'
+    'Get-AdpWorkerPhoto','Set-AdpWorkerPhoto','Remove-AdpWorkerPhoto'
+    'Set-AdpWorkerStringField'
+    'Get-AdpEventNotification','Remove-AdpEventNotification'
+)
 
 # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.
 CmdletsToExport = @()
