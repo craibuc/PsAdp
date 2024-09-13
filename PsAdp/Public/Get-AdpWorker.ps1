@@ -1,26 +1,48 @@
 <#
 .SYNOPSIS
-Retrieve an access token from ADP's API.
+Retrieve a worker or workers from ADP's API.
 
 .PARAMETER AccessToken
 
-.PARAMETER CertificatePath
-Path to the certificate (pfx)
+.PARAMETER Certificate
+An instance of the certificate (pfx) file.
 
 .PARAMETER Select
+Array of paths that represent data nodes.
 
 .PARAMETER Filter
+Array of paths that represent data nodes.
+
+.PARAMETER Masked
+Mask the SSN if present.
 
 .EXAMPLE
-Get-AdpWorker -AccessToken $Env:ADT_API_CLIENT_ID -CertificatePath '/path/to/certificate.pfx'
+$Certificate = Get-PfxCertificate -FilePath $CertificatePath
+$AccessToken = New-AdpAccessToken -ClientId $Env:ADT_API_CLIENT_ID -ClientSecret $env:ADT_API_CLIENT_SECRET -Certificate $Certificate
+
+Get-AdpWorker -AccessToken $AccessToken.access_token -Certificate $Certificate
 
 .EXAMPLE
-Get-AdpWorker -Select 'workers/person/legalName','workers/person/governmentIDs' -AccessToken $Env:ADT_API_CLIENT_ID -CertificatePath '/path/to/certificate.pfx'
+$Certificate = Get-PfxCertificate -FilePath $CertificatePath
+$AccessToken = New-AdpAccessToken -ClientId $Env:ADT_API_CLIENT_ID -ClientSecret $env:ADT_API_CLIENT_SECRET -Certificate $Certificate
+
+Get-AdpWorker -AccessToken $AccessToken.access_token -Certificate $Certificate -Select 'workers/person/legalName','workers/person/governmentIDs'
 
 Only include legal name and government ID in the data.
 
 .EXAMPLE
-Get-AdpWorker -Filter "workers/workAssignments/assignmentStatus/statusCode/codeValue eq 'T'" -AccessToken $Env:ADT_API_CLIENT_ID -CertificatePath '/path/to/certificate.pfx'
+$Certificate = Get-PfxCertificate -FilePath $CertificatePath
+$AccessToken = New-AdpAccessToken -ClientId $Env:ADT_API_CLIENT_ID -ClientSecret $env:ADT_API_CLIENT_SECRET -Certificate $Certificate
+
+Get-AdpWorker -AccessToken $AccessToken.access_token -Certificate $Certificate -Select 'associateOID','workers/person/legalName','workers/person/customFieldGroup/stringFields','workerStatus','worker/person/governmentIDs'
+
+More data elements.
+
+.EXAMPLE
+$Certificate = Get-PfxCertificate -FilePath $CertificatePath
+$AccessToken = New-AdpAccessToken -ClientId $Env:ADT_API_CLIENT_ID -ClientSecret $env:ADT_API_CLIENT_SECRET -Certificate $Certificate
+
+Get-AdpWorker -AccessToken $AccessToken.access_token -Certificate $Certificate -Filter "workers/workAssignments/assignmentStatus/statusCode/codeValue eq 'T'"
 
 Get (T)erminated workers.
 #>
@@ -28,83 +50,84 @@ function Get-AdpWorker
 {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory,ValueFromPipelineByPropertyName)]
+        [Parameter(Mandatory)]
+        [object]$Certificate,
+
+        [Parameter(Mandatory)]
         [Alias('access_token')]
         [string]$AccessToken,
 
-        [Parameter(Mandatory)]
-        [string]$CertificatePath,
-
-        [Parameter()]
+        [Parameter(ParameterSetName='One',Mandatory)]
         [string]$AssociateId,
 
-        [Parameter()]
+        [Parameter(ParameterSetName='One')]
+        [Parameter(ParameterSetName='All')]
         [string[]]$Select,
 
-        [Parameter()]
-        [string[]]$Filter
+        [Parameter(ParameterSetName='All')]
+        [string[]]$Filter,
 
+        [Parameter()]
+        [switch]$Masked
     )
 
     Write-Debug "AccessToken: $AccessToken"
-    Write-Debug "CertificatePath: $CertificatePath"
     Write-Debug "AssociateId: $AssociateId"
     Write-Debug "Select: $Select"
     Write-Debug "Filter: $Filter"
+    Write-Debug "Masked: $Masked"
 
-    $BaseUri='https://accounts.adp.com/hr/v2/workers'
-    
+    $BaseUri = $AssociateId ? "https://api.adp.com/hr/v2/workers/$AssociateId" : 'https://api.adp.com/hr/v2/workers'
+    Write-Debug "BaseUri: $BaseUri"
+
     $Headers = @{
-        Accept = 'application/json;masked=false'
+        Accept = "application/json;masked=$Masked".ToLower()
         Authorization = "Bearer $AccessToken"
     }
+    Write-Debug ($Headers | ConvertTo-Json)
+
+    $Page = 0
+    $PageSize = 100
+
+    #
+    # collect querystring variables
+    #
+
+    $Query = @{}
+
+    # applies to One and All
+    if ( $null -ne $Select) { $Query.'$select' = ($Select -join ',') }
+    
+    # applies to All
+    if ($PSCmdlet.ParameterSetName -eq 'All') { $Query.top = $PageSize }
+    if ($PSCmdlet.ParameterSetName -eq 'All' -and $null -ne $Filter) { $Query.'$filter' = ($Filter -join ',') }
 
     try {
 
-        $Certificate = Get-PfxCertificate -FilePath $CertificatePath
-
-        $Page = 0
-        $PageSize = 100
-        
         do {
 
-            # $Uri = "$BaseUri`?`$top={0}&`$skip={1}" -f $PageSize, ($Page * $PageSize)
+            if ($PSCmdlet.ParameterSetName -eq 'All') { $Query.skip = ($Page * $PageSize) }
 
-            $Uri = 
-                if ( $AssociateId ) { "$BaseUri/{0}" -f $AssociateId }
-                else { "$BaseUri`?`$top={0}&`$skip={1}" -f $PageSize, ($Page * $PageSize) }
-            
-            # add select restriction
-            if ( $null -ne $Select) {
-                $Uri = "$Uri&`$select={0}" -f ($Select -join ',')
+            $QS=@()
+            $QS += foreach($Q in $Query.GetEnumerator()) {
+                "{0}={1}" -f $Q.Name, $Q.Value
             }
 
-            # add filter restriction
-            if ( $null -ne $Filter) {
-                $Uri = "$Uri&`$filter={0}" -f ($Filter -join ',')
-            }
-            
+            $Uri = $QS.Length -gt 0 ? ( "{0}?{1}" -f $BaseUri, ($QS -join '&') ) : $BaseUri
             Write-Debug "Uri: $Uri"
 
             $Response = Invoke-WebRequest -Uri $Uri -Method Get -Certificate $Certificate -Headers $Headers
+            Write-Debug "StatusCode: $( $Response.StatusCode )"
 
-            $Content = if ( $null -ne $Response ) {$Response.Content | ConvertFrom-Json}
+            if ( $null -ne $Response -and $Response.StatusCode -eq 200) {
+                $Content = $Response.Content | ConvertFrom-Json
+                Write-Output $Content.workers
+            }
 
-            Write-Output $Content.workers
-    
             $Page += 1
 
         } while ( $Response.StatusCode -eq 200 -and -not $AssociateId)
 
-    }
-    catch [System.IO.FileNotFoundException] {
-
-        $FileNotFoundException = [System.IO.FileNotFoundException]::new('The certificate file was not found.',$CertificatePath)
-        $ErrorId = "$($MyInvocation.MyCommand.Module.Name).$($MyInvocation.MyCommand.Name) - $($_.Exception.Message)"
-        $ErrorCategory = [System.Management.Automation.ErrorCategory]::ObjectNotFound
-        $ErrorRecord = [Management.Automation.ErrorRecord]::new($FileNotFoundException, $ErrorId, $ErrorCategory, $CertificatePath)
-
-        Write-Error -ErrorRecord $ErrorRecord
     }
     catch [Microsoft.PowerShell.Commands.HttpResponseException] {
 
